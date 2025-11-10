@@ -148,7 +148,7 @@ const Card = ({ card, currentRank, onRank }) => {
           {isTransformCard && (
             <div className="card-face card-back">
               {face2ImageUrl ? (
-                <img src={face2ImageUrl} alt={card.card_faces[1].name} loading="lazy" className="w-full h-auto rounded-lg" />
+                <img src={face2ImageUrl} alt={card.card_faces[1].name} loading="lazy" className="w-64 h-auto rounded-lg mx-auto" />
               ) : (
                 <div className="flex items-center justify-center w-full min-h-[300px] bg-gray-700 rounded-lg text-center text-gray-300 p-2">
                   {card.card_faces[1].name} (No Image)
