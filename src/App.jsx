@@ -62,7 +62,7 @@ const GalleryView = ({ groupedCards, onCardClick }) => {
         <div key={tier} className={`p-4 rounded-lg border-2`}>
           <h2 className={`text-3xl font-bold mb-4 p-2 rounded-md inline-block border-2`}>{tier} ({cards.length})</h2>
           {/* This line is updated for a much denser grid */}
-          <div className="w-full grid grid-cols-5 sm:grid-cols-7 md:grid-cols-9 lg:grid-cols-12 xl:grid-cols-14 gap-1">
+          <div className="w-full grid grid-cols-5 sm:grid-cols-3 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-5 gap-1">
             {cards.map((card) => (
               <GalleryCard
                 key={card.id}
@@ -210,6 +210,14 @@ const FilterControls = ({ dispatch, onFilterChange, filters }) => {
     });
   };
 
+  const handleRarityFilter = (rarity) => {
+    dispatch({
+      type: 'SET_FILTER',
+      payload: { filterName: 'rarity', value: rarity },
+      onFilterChange: onFilterChange
+    });
+  }
+
   return (
     <div className="p-4 bg-gray-800 rounded-lg flex flex-wrap gap-4 items-center justify-center">
       <div className="flex gap-2 flex-wrap justify-center">
@@ -234,6 +242,13 @@ const FilterControls = ({ dispatch, onFilterChange, filters }) => {
         <option value="Enchantment">Enchantment</option>
         <option value="Artifact">Artifact</option>
         <option value="Land">Land</option>
+      </select>
+      <select onChange ={(e) => handleRarityFilter(e.target.value)} className="bg-gray-700 p-2 rounded text-white">
+        <option value="">All Rarities</option>
+        <option value="common">Common</option>
+        <option value="uncommon">Uncommon</option>
+        <option value="rare">Rare</option>
+        <option value="mythic">Mythic</option>
       </select>
       <input
         type="number"
@@ -285,11 +300,72 @@ const ShareControls = ({ rankings, allCards }) => {
       }
     }
   };
-
+  
   return (
     <div className="p-4 bg-gray-800 rounded-lg flex gap-4">
       <button onClick={exportRankings} className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-500">Export</button>
       <button onClick={importRankings} className="bg-green-600 px-4 py-2 rounded hover:bg-green-500">Import</button>
+    </div>
+  );
+};
+
+const HelpPanel = () => {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      {/* Help Button */}
+      <div className="flex justify-end">
+        <div 
+          onClick={() => setIsOpen(!isOpen)}
+          className="bg-blue-600 hover:bg-blue-500 rounded-full w-12 h-12 flex items-center justify-center cursor-pointer shadow-lg"
+        >
+          <span className="text-white text-2xl font-bold">?</span>
+        </div>
+      </div>
+      
+      {/* Info Panel */}
+      {isOpen && (
+        <div className="absolute bottom-14 right-0 bg-gray-800 border-2 border-gray-700 rounded-lg p-4 shadow-xl min-w-[280px]">
+          <h3 className="text-lg font-bold mb-3 text-blue-400">Hotkeys</h3>
+          <div className="space-y-2 text-sm mb-4">
+            <div className="flex justify-between">
+              <span className="text-gray-400">Navigate:</span>
+              <span className="font-mono bg-gray-700 px-2 py-0.5 rounded">← →</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Grade:</span>
+              <span className="font-mono bg-gray-700 px-2 py-0.5 rounded">A B C D F</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-400">Modifier:</span>
+              <span className="font-mono bg-gray-700 px-2 py-0.5 rounded">+ -</span>
+            </div>
+          </div>
+          
+          <div className="border-t border-gray-700 pt-3 mt-3">
+            <h4 className="text-sm font-semibold mb-2 text-gray-300">Created by:</h4>
+            <div className="space-y-1 text-sm">
+              <a 
+                href="https://github.com/ATranimal" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-blue-400 hover:text-blue-300 hover:underline"
+              >
+                github.com/ATranimal
+              </a>
+              <a 
+                href="https://github.com/andrew-jung" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="block text-blue-400 hover:text-blue-300 hover:underline"
+              >
+                github.com/andrew-jung
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -299,7 +375,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [viewMode, setViewMode] = useState('ranker');
+  const [viewMode, setViewMode] = useState("ranker");
 
   const [rankings, setRankings] = useState(() => {
     try {
@@ -321,9 +397,14 @@ export default function App() {
         if (!response.ok) throw new Error(`Could not find ${SET_CODE}.json`);
         const data = await response.json();
         setAllCards(data);
+
+        const unrankedCount = data.filter((card) => !rankings[card.id]).length;
+        if (unrankedCount === 0) setViewMode("gallery");
       } catch (err) {
         console.error(err);
-        setError(`Failed to load card data. Make sure ${SET_CODE}.json is in /public/sets/${SET_CODE}/`);
+        setError(
+          `Failed to load card data. Make sure ${SET_CODE}.json is in /public/sets/${SET_CODE}/`
+        );
       } finally {
         setIsLoading(false);
       }
@@ -340,42 +421,60 @@ export default function App() {
   }, [rankings]);
 
   const filteredAndSortedCards = useMemo(() => {
-    let filtered = allCards
-      .filter(card => {
-        const { type, cmc, showUnrankedOnly } = state.filters;
-        const selectedColors = state.filters.colors;
-        const cardColors = getCardColors(card);
+    let filtered = allCards.filter((card) => {
+      const { type, cmc, showUnrankedOnly } = state.filters;
+      const selectedColors = state.filters.colors;
+      const cardColors = getCardColors(card);
 
-        if (showUnrankedOnly && rankings[card.id]) {
-          return false;
-        }
+      if (showUnrankedOnly && rankings[card.id]) {
+        return false;
+      }
 
-        if (selectedColors && selectedColors.length > 0) {
-          if (selectedColors === 'M') {
-            if (cardColors.length <= 1) return false;
-          } else if (selectedColors === 'C') {
-            if (cardColors.length > 0) return false;
-          } else {
-            if (cardColors.length !== 1 || cardColors[0] !== selectedColors) {
-              return false;
-            }
+      if (selectedColors && selectedColors.length > 0) {
+        if (selectedColors === "M") {
+          if (cardColors.length <= 1) return false;
+        } else if (selectedColors === "C") {
+          if (cardColors.length > 0) return false;
+        } else {
+          if (cardColors.length !== 1 || cardColors[0] !== selectedColors) {
+            return false;
           }
         }
+      }
 
-        if (type && !card.type_line.includes(type)) return false;
-        if (cmc && card.cmc > parseInt(cmc)) return false;
-        return true;
-      });
+      if (type && !card.type_line.includes(type)) return false;
+      if (cmc && card.cmc > parseInt(cmc)) return false;
 
-    const rarityOrder = { 'common': 4, 'uncommon': 3, 'rare': 2, 'mythic': 1 };
-    const gradeOrder = { 'A+': 1, 'A': 2, 'A-': 3, 'B+': 4, 'B': 5, 'B-': 6, 'C+': 7, 'C': 8, 'C-': 9, 'D+': 10, 'D': 11, 'D-': 12, 'F': 13 };
+      if (state.filters.rarity) {
+        if (card.rarity !== state.filters.rarity) return false;
+      }
+      return true;
+    });
+
+    const rarityOrder = { common: 4, uncommon: 3, rare: 2, mythic: 1 };
+    const gradeOrder = {
+      "A+": 1,
+      A: 2,
+      "A-": 3,
+      "B+": 4,
+      B: 5,
+      "B-": 6,
+      "C+": 7,
+      C: 8,
+      "C-": 9,
+      "D+": 10,
+      D: 11,
+      "D-": 12,
+      F: 13,
+    };
 
     return filtered.sort((a, b) => {
-      if (state.sortBy === 'name') return a.name.localeCompare(b.name);
-      if (state.sortBy === 'rarity') return (rarityOrder[a.rarity] || 5) - (rarityOrder[b.rarity] || 5);
-      if (state.sortBy === 'rank') {
-        const rankA = rankings[a.id] ? (gradeOrder[rankings[a.id]] || 99) : 100;
-        const rankB = rankings[b.id] ? (gradeOrder[rankings[b.id]] || 99) : 100;
+      if (state.sortBy === "name") return a.name.localeCompare(b.name);
+      if (state.sortBy === "rarity")
+        return (rarityOrder[a.rarity] || 5) - (rarityOrder[b.rarity] || 5);
+      if (state.sortBy === "rank") {
+        const rankA = rankings[a.id] ? gradeOrder[rankings[a.id]] || 99 : 100;
+        const rankB = rankings[b.id] ? gradeOrder[rankings[b.id]] || 99 : 100;
         return rankA - rankB;
       }
       return 0;
@@ -384,17 +483,25 @@ export default function App() {
 
   const groupedCardsForGallery = useMemo(() => {
     const tierOrder = [
-      'A+', 'A', 'A-',
-      'B+', 'B', 'B-',
-      'C+', 'C', 'C-',
-      'D+', 'D', 'D-',
-      'F',
-      'Unranked'
+      "A+",
+      "A",
+      "A-",
+      "B+",
+      "B",
+      "B-",
+      "C+",
+      "C",
+      "C-",
+      "D+",
+      "D",
+      "D-",
+      "F",
+      "Unranked",
     ];
 
     const groups = {};
-    filteredAndSortedCards.forEach(card => {
-      const rank = rankings[card.id] || 'Unranked';
+    filteredAndSortedCards.forEach((card) => {
+      const rank = rankings[card.id] || "Unranked";
       if (!groups[rank]) {
         groups[rank] = [];
       }
@@ -402,7 +509,7 @@ export default function App() {
     });
 
     return tierOrder
-      .map(tier => {
+      .map((tier) => {
         if (groups[tier] && groups[tier].length > 0) {
           return {
             tier,
@@ -415,55 +522,95 @@ export default function App() {
   }, [filteredAndSortedCards, rankings]);
 
   const handleNext = useCallback(() => {
-    setCurrentIndex(prev => (prev + 1) % filteredAndSortedCards.length);
+    setCurrentIndex((prev) => (prev + 1) % filteredAndSortedCards.length);
   }, [filteredAndSortedCards.length]);
 
   const handlePrev = useCallback(() => {
-    setCurrentIndex(prev => (prev - 1 + filteredAndSortedCards.length) % filteredAndSortedCards.length);
+    setCurrentIndex(
+      (prev) =>
+        (prev - 1 + filteredAndSortedCards.length) %
+        filteredAndSortedCards.length
+    );
   }, [filteredAndSortedCards.length]);
 
   const handleRank = useCallback((cardId, rank) => {
-    setRankings(prevRankings => ({
+    setRankings((prevRankings) => ({
       ...prevRankings,
-      [cardId]: rank
+      [cardId]: rank,
     }));
   }, []);
 
   const handleGalleryCardClick = (cardId) => {
-    const index = filteredAndSortedCards.findIndex(c => c.id === cardId);
+    const index = filteredAndSortedCards.findIndex((c) => c.id === cardId);
     if (index !== -1) {
-      setViewMode('ranker');
+      setViewMode("ranker");
       setCurrentIndex(index);
     }
   };
 
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (viewMode !== 'ranker') return;
-      if (e.key === 'ArrowRight') handleNext();
-      if (e.key === 'ArrowLeft') handlePrev();
+      if (viewMode !== "ranker") return;
+      if (e.key === "ArrowRight") handleNext();
+      if (e.key === "ArrowLeft") handlePrev();
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleNext, handlePrev, viewMode]);
 
-  if (error) return <div className="min-h-screen bg-gray-900 text-white p-6"><h2 className="text-2xl">Error</h2><p>{error}</p></div>;
-  if (isLoading) return <div className="min-h-screen bg-gray-900 text-white flex justify-center items-center"><p>Loading cards...</p></div>;
+  if (error)
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-6">
+        <h2 className="text-2xl">Error</h2>
+        <p>{error}</p>
+      </div>
+    );
+  if (isLoading)
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex justify-center items-center">
+        <p>Loading cards...</p>
+      </div>
+    );
 
   const currentCard = filteredAndSortedCards[currentIndex];
 
   return (
     <div className="bg-gray-900 text-white min-h-screen p-4 flex flex-col items-center font-sans">
-      <h1 className="text-4xl font-bold text-center mb-4 tracking-wide">MTG Card Ranker: {SET_CODE.toUpperCase()}</h1>
+      <h1 className="text-4xl font-bold text-center mb-4 tracking-wide">
+        MTG Card Ranker: {SET_CODE.toUpperCase()}
+      </h1>
       <div className="sticky top-0 z-10 bg-gray-900 py-2 w-full flex justify-center">
         <div className="container mx-auto flex flex-col items-center gap-4">
-          <div className="flex flex-wrap justify-center items-start gap-4">
-            <div className="p-4 bg-gray-800 rounded-lg flex gap-2">
-              <button onClick={() => setViewMode('ranker')} className={`px-4 py-2 rounded ${viewMode === 'ranker' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}>Ranker</button>
-              <button onClick={() => setViewMode('gallery')} className={`px-4 py-2 rounded ${viewMode === 'gallery' ? 'bg-blue-600' : 'bg-gray-600 hover:bg-gray-500'}`}>Gallery</button>
+          <div className="flex flex-wrap justify-center items-start gap-4 flex-col">
+            <div className="flex gap-2">
+              <div className="p-4 bg-gray-800 rounded-lg flex gap-2">
+                <button
+                  onClick={() => setViewMode("ranker")}
+                  className={`px-4 py-2 rounded ${
+                    viewMode === "ranker"
+                      ? "bg-blue-600"
+                      : "bg-gray-600 hover:bg-gray-500"
+                  }`}
+                >
+                  Ranker
+                </button>
+                <button
+                  onClick={() => setViewMode("gallery")}
+                  className={`px-4 py-2 rounded ${
+                    viewMode === "gallery"
+                      ? "bg-blue-600"
+                      : "bg-gray-600 hover:bg-gray-500"
+                  }`}
+                >
+                  Gallery
+                </button>
+              </div>
+              <SortControls
+                dispatch={dispatch}
+                onSortChange={() => setCurrentIndex(0)}
+              />
+              <ShareControls rankings={rankings} allCards={allCards} />
             </div>
-            <SortControls dispatch={dispatch} onSortChange={() => setCurrentIndex(0)} />
-            <ShareControls rankings={rankings} allCards={allCards} />
           </div>
           <FilterControls
             dispatch={dispatch}
@@ -473,21 +620,31 @@ export default function App() {
         </div>
       </div>
 
-      <main className="flex-grow flex items-center justify-center w-full max-w-7xl mx-auto mt-4">
+      <main className="flex items-center justify-center w-full max-w-7xl mx-auto mt-4">
         {filteredAndSortedCards.length > 0 ? (
           <>
-            {viewMode === 'ranker' && (
+            {viewMode === "ranker" && (
               <div className="flex items-center justify-center gap-4 w-full">
-                <button onClick={handlePrev} className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 text-2xl">←</button>
+                <button
+                  onClick={handlePrev}
+                  className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 text-2xl"
+                >
+                  ←
+                </button>
                 <Card
                   card={currentCard}
                   currentRank={rankings[currentCard?.id]}
                   onRank={handleRank}
                 />
-                <button onClick={handleNext} className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 text-2xl">→</button>
+                <button
+                  onClick={handleNext}
+                  className="px-4 py-2 bg-gray-700 rounded-lg hover:bg-gray-600 text-2xl"
+                >
+                  →
+                </button>
               </div>
             )}
-            {viewMode === 'gallery' && (
+            {viewMode === "gallery" && (
               <GalleryView
                 groupedCards={groupedCardsForGallery}
                 onCardClick={handleGalleryCardClick}
@@ -501,10 +658,14 @@ export default function App() {
 
       <footer className="text-center mt-4 text-gray-400">
         <p>Showing {filteredAndSortedCards.length} cards</p>
-        {viewMode === 'ranker' && filteredAndSortedCards.length > 0 && (
-          <p>Card {currentIndex + 1} of {filteredAndSortedCards.length}</p>
+        {viewMode === "ranker" && filteredAndSortedCards.length > 0 && (
+          <p>
+            Card {currentIndex + 1} of {filteredAndSortedCards.length}
+          </p>
         )}
       </footer>
+      
+      <HelpPanel />
     </div>
   );
 }
