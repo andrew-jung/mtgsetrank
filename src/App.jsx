@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useReducer, useMemo } from 'react';
+import pako from 'pako';
 import './App.css';
 
 const SET_CODE = 'tla';
@@ -39,6 +40,9 @@ function stateReducer(state, action) {
 const getCardColors = (card) => {
   return card.color_identity || [];
 };
+
+// Helper function to get card key
+const getCardKey = (card) => `${card.set}-${card.collector_number}`;
 
 const GalleryCard = ({ card, onClick }) => {
   const face1ImageUrl = card.localImagePaths?.[0]
@@ -88,12 +92,12 @@ const Card = ({ card, currentRank, onRank }) => {
     setSelectedGrade(null);
     setSelectedModifier(null);
     setIsFlipped(false);
-  }, [card.id]);
+  }, [getCardKey(card)]);
 
   const handleRank = useCallback((grade, modifier) => {
     const finalRank = `${grade}${modifier || ''}`;
-    onRank(card.id, finalRank);
-  }, [card.id, onRank]);
+    onRank(getCardKey(card), finalRank);
+  }, [card, onRank]);
 
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -272,8 +276,71 @@ const SortControls = ({ dispatch, onSortChange }) => (
 );
 
 const ShareControls = ({ rankings, allCards }) => {
+  const [shareUrl, setShareUrl] = useState('');
+  
+  // Helper function to compress data
+  const compressData = (data) => {
+    try {
+      const jsonString = JSON.stringify(data);
+      const compressed = pako.deflate(jsonString);
+      // Convert to base64 URL-safe string
+      const base64 = btoa(String.fromCharCode(...compressed))
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/, '');
+      return base64;
+    } catch (error) {
+      console.error('Compression failed:', error);
+      return null;
+    }
+  };
+
+  // Helper function to decompress data
+  const decompressData = (compressed) => {
+    try {
+      // Convert URL-safe base64 back to regular base64
+      const base64 = compressed
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      
+      const decompressed = pako.inflate(bytes, { to: 'string' });
+      return JSON.parse(decompressed);
+    } catch (error) {
+      console.error('Decompression failed:', error);
+      return null;
+    }
+  };
+
+  const createShareableLink = () => {
+    const unrankedCount = allCards.filter(card => !rankings[getCardKey(card)]).length;
+    if (unrankedCount > 0) {
+      const proceed = window.confirm(
+        `You have ${unrankedCount} unranked card(s). Are you sure you want to create a shareable link?`
+      );
+      if (!proceed) {
+        return;
+      }
+    }
+
+    const compressed = compressData(rankings);
+    if (compressed) {
+      const url = `${window.location.origin}${window.location.pathname}?import=${compressed}`;
+      setShareUrl(url);
+      navigator.clipboard.writeText(url);
+      alert(`Shareable link copied to clipboard!\nLink length: ${url.length} characters`);
+    } else {
+      alert('Failed to create shareable link!');
+    }
+  };
+
   const exportRankings = () => {
-    const unrankedCount = allCards.filter(card => !rankings[card.id]).length;
+    const unrankedCount = allCards.filter(card => !rankings[getCardKey(card)]).length;
     if (unrankedCount > 0) {
       const proceed = window.confirm(
         `You have ${unrankedCount} unranked card(s). Are you sure you want to export?`
@@ -283,26 +350,61 @@ const ShareControls = ({ rankings, allCards }) => {
       }
     }
 
-    const rankingString = btoa(JSON.stringify(rankings));
-    navigator.clipboard.writeText(rankingString);
-    alert('Rankings copied to clipboard!');
+    const compressed = compressData(rankings);
+    if (compressed) {
+      navigator.clipboard.writeText(compressed);
+      alert('Compressed rankings copied to clipboard!');
+    } else {
+      alert('Failed to export rankings!');
+    }
   };
 
   const importRankings = () => {
-    const rankingString = prompt('Paste your ranking string:');
-    if (rankingString) {
+    const input = prompt('Paste your ranking string or shareable link:');
+    if (input) {
       try {
-        const decoded = atob(rankingString);
-        localStorage.setItem(STORAGE_KEY, decoded);
-        window.location.reload();
-      } catch {
-        alert('Invalid ranking string!');
+        // Check if input is a URL and extract the import parameter
+        let rankingString = input;
+        if (input.startsWith('http://') || input.startsWith('https://')) {
+          const url = new URL(input);
+          const importParam = url.searchParams.get('import');
+          if (!importParam) {
+            alert('No ranking data found in the URL!');
+            return;
+          }
+          rankingString = importParam;
+        }
+
+        // Try decompressing first (new format)
+        let parsedRankings = decompressData(rankingString);
+        
+        // Fall back to old base64 format if decompression fails
+        if (!parsedRankings) {
+          try {
+            const decoded = atob(rankingString);
+            parsedRankings = JSON.parse(decoded);
+          } catch {
+            alert('Invalid ranking string!');
+            return;
+          }
+        }
+        
+        if (parsedRankings) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedRankings));
+          window.location.reload();
+        }
+      } catch (error) {
+        console.error('Import failed:', error);
+        alert('Invalid ranking data!');
       }
     }
   };
   
   return (
-    <div className="p-4 bg-gray-800 rounded-lg flex gap-4">
+    <div className="p-4 bg-gray-800 rounded-lg flex gap-4 flex-wrap">
+      <button onClick={createShareableLink} className="bg-purple-600 px-4 py-2 rounded hover:bg-purple-500">
+        📤 Share Link
+      </button>
       <button onClick={exportRankings} className="bg-blue-600 px-4 py-2 rounded hover:bg-blue-500">Export</button>
       <button onClick={importRankings} className="bg-green-600 px-4 py-2 rounded hover:bg-green-500">Import</button>
     </div>
@@ -389,6 +491,44 @@ export default function App() {
 
   const [state, dispatch] = useReducer(stateReducer, initialState);
 
+  // Migration effect: Convert old ID-based rankings to new set-collector_number format
+  useEffect(() => {
+    if (allCards.length === 0) return;
+    
+    const currentRankings = rankings;
+    let needsMigration = false;
+    const migratedRankings = {};
+    
+    // Check if any ranking uses old ID format (UUIDs with dashes)
+    const hasOldFormat = Object.keys(currentRankings).some(key => key.includes('-') && key.length > 20);
+    
+    if (hasOldFormat) {
+      console.log('Detected old ranking format, migrating...');
+      needsMigration = true;
+      
+      // Create a map from old ID to new key
+      allCards.forEach(card => {
+        const oldId = card.id;
+        const newKey = getCardKey(card);
+        
+        if (currentRankings[oldId]) {
+          migratedRankings[newKey] = currentRankings[oldId];
+        }
+      });
+      
+      // Keep any rankings that are already in new format
+      Object.keys(currentRankings).forEach(key => {
+        if (!key.includes('-') || key.length <= 20) {
+          migratedRankings[key] = currentRankings[key];
+        }
+      });
+      
+      console.log(`Migrated ${Object.keys(migratedRankings).length} rankings to new format`);
+      setRankings(migratedRankings);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(migratedRankings));
+    }
+  }, [allCards, rankings]);
+
   useEffect(() => {
     async function loadCards() {
       setIsLoading(true);
@@ -420,13 +560,67 @@ export default function App() {
     }
   }, [rankings]);
 
+  // get the query parameter, check for 'import', and the run the importer
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const importData = urlParams.get("import");
+
+    if (importData) {
+      try {
+        // Helper function to decompress data
+        const decompressData = (compressed) => {
+          try {
+            // Convert URL-safe base64 back to regular base64
+            const base64 = compressed
+              .replace(/-/g, '+')
+              .replace(/_/g, '/');
+            
+            const binaryString = atob(base64);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            
+            const decompressed = pako.inflate(bytes, { to: 'string' });
+            return JSON.parse(decompressed);
+          } catch (error) {
+            console.error('Decompression failed:', error);
+            return null;
+          }
+        };
+
+        // Try decompressing first (new format)
+        let parsedRankings = decompressData(importData);
+        
+        // Fall back to old base64 format if decompression fails
+        if (!parsedRankings) {
+          const decoded = atob(importData);
+          parsedRankings = JSON.parse(decoded);
+        }
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsedRankings));
+        setRankings(parsedRankings);
+        // Clear the query parameter from the URL
+        window.history.replaceState(
+          {},
+          document.title,
+          window.location.pathname
+        );
+        alert("Rankings imported successfully!");
+      } catch (error) {
+        console.error("Failed to import rankings:", error);
+        alert("Invalid import data in URL!");
+      }
+    }
+  }, []);
+
   const filteredAndSortedCards = useMemo(() => {
     let filtered = allCards.filter((card) => {
       const { type, cmc, showUnrankedOnly } = state.filters;
       const selectedColors = state.filters.colors;
       const cardColors = getCardColors(card);
 
-      if (showUnrankedOnly && rankings[card.id]) {
+      if (showUnrankedOnly && rankings[getCardKey(card)]) {
         return false;
       }
 
@@ -473,8 +667,8 @@ export default function App() {
       if (state.sortBy === "rarity")
         return (rarityOrder[a.rarity] || 5) - (rarityOrder[b.rarity] || 5);
       if (state.sortBy === "rank") {
-        const rankA = rankings[a.id] ? gradeOrder[rankings[a.id]] || 99 : 100;
-        const rankB = rankings[b.id] ? gradeOrder[rankings[b.id]] || 99 : 100;
+        const rankA = rankings[getCardKey(a)] ? gradeOrder[rankings[getCardKey(a)]] || 99 : 100;
+        const rankB = rankings[getCardKey(b)] ? gradeOrder[rankings[getCardKey(b)]] || 99 : 100;
         return rankA - rankB;
       }
       return 0;
@@ -501,7 +695,7 @@ export default function App() {
 
     const groups = {};
     filteredAndSortedCards.forEach((card) => {
-      const rank = rankings[card.id] || "Unranked";
+      const rank = rankings[getCardKey(card)] || "Unranked";
       if (!groups[rank]) {
         groups[rank] = [];
       }
@@ -633,7 +827,7 @@ export default function App() {
                 </button>
                 <Card
                   card={currentCard}
-                  currentRank={rankings[currentCard?.id]}
+                  currentRank={rankings[getCardKey(currentCard)]}
                   onRank={handleRank}
                 />
                 <button
