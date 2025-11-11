@@ -106,11 +106,13 @@ const Card = ({ card, currentRank, onRank }) => {
         setSelectedGrade(key);
         handleRank(key, selectedModifier);
       } else if (key === '+' || key === '=') {
-        setSelectedModifier('+');
-        if (selectedGrade) handleRank(selectedGrade, '+');
+        const modifierToset = selectedModifier == "+" ? null :'+';
+        setSelectedModifier(modifierToset);
+        if (selectedGrade) handleRank(selectedGrade, modifierToset);
       } else if (key === '-') {
-        setSelectedModifier('-');
-        if (selectedGrade) handleRank(selectedGrade, '-');
+        const modifierToset = selectedModifier == "-" ? null : "-";
+        setSelectedModifier(modifierToset);
+        if (selectedGrade) handleRank(selectedGrade, modifierToset);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -185,7 +187,7 @@ const Card = ({ card, currentRank, onRank }) => {
           {['+', '-'].map(mod => (
             <button
               key={mod}
-              onClick={(e) => { e.stopPropagation(); setSelectedModifier(mod); if (selectedGrade) handleRank(selectedGrade, mod); }}
+              onClick={(e) => { e.stopPropagation(); selectedModifier == mod ? setSelectedModifier(null) : setSelectedModifier(mod); if (selectedGrade) handleRank(selectedGrade, mod); }}
               className={`w-9 h-9 text-md font-bold rounded-full transition-colors shadow-md ${selectedModifier === mod ? 'bg-green-600 text-white ring-4 ring-green-400' : 'bg-gray-600 hover:bg-gray-500'}`}
             >
               {mod}
