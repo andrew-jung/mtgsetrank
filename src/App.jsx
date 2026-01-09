@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useReducer, useMemo } from 're
 import pako from 'pako';
 import './App.css';
 
-const SET_CODE = 'tla';
+const SET_CODE = 'ecl';
 const STORAGE_KEY = `rankings-${SET_CODE}`;
 
 const initialState = {
