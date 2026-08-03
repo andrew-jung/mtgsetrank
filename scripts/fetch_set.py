@@ -41,7 +41,7 @@ def fetch_all_cards(set_code):
     """Fetch all cards for a set, handling Scryfall pagination."""
     url = (
         f"{SCRYFALL_SEARCH}"
-        f"?q=e%3A{set_code}+not%3Aextra+not%3Avariation"
+        f"?q=e%3A{set_code}+not%3Aextra+not%3Avariation+not%3Abasic"
         f"&unique=cards&order=set&include_extras=false"
     )
     cards = []
